@@ -1,13 +1,3 @@
 {
-  "functions": {
-    "api/**/*": {
-      "runtime": "nodejs20.x"
-    }
-  },
-  "crons": [
-    {
-      "path": "/api/poll",
-      "schedule": "*/5 * * * *"
-    }
-  ]
+  "version": 2
 }

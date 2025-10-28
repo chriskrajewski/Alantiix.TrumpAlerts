@@ -12,7 +12,7 @@ Serverless alerting pipeline that monitors Donald Trump's activity on X (Twitter
 - **Triggering**: Vercel cron (`/api/poll`) invokes the polling cycle; manual runs use `npm run poll`.
 - **Data ingestion**:  
   - X via [twitter-api-v2](https://github.com/PLhery/node-twitter-api-v2) (Bearer token needed).  
-  - Truth Social via its Mastodon-compatible OAuth API (password grant flow inspired by [truthbrush](https://github.com/stanfordio/truthbrush)), with optional proxy fallback.
+  - Truth Social via the public [truthsocial-api.vercel.app](https://truthsocial-api.vercel.app/api-docs) gateway, polling the `statuses` endpoint with `createdAfter` filters to retrieve only new posts.
 - **State tracking**: Upstash Redis stores last-seen IDs per account (automatic in-memory fallback for local/dev).
 - **Sentiment analysis**: Optional OpenAI integration (`gpt-4o-mini`) with heuristic fallback when no API key is present.
 - **Delivery**: Any HTTPS webhook (Slack, Discord, internal services, etc.) receives structured payloads.
@@ -30,13 +30,13 @@ Serverless alerting pipeline that monitors Donald Trump's activity on X (Twitter
    | `TWITTER_BEARER_TOKEN` | Optional | X API bearer token with read access. Needed for Twitter polling. |
    | `TWITTER_HANDLES` | Optional | Comma-separated overrides/additions (e.g. `realDonaldTrump,POTUS`). Defaults include Trump, POTUS, USTreasury, federalreserve. |
    | `TRUTHSOCIAL_HANDLES` | Optional | Comma-separated Truth Social handles. Defaults to Donald Trump. |
-   | `TRUTHSOCIAL_PROXY_URL` | Conditional | Proxy endpoint to fetch Truth Social content (see below). Required if you do not supply account credentials or Cloudflare blocks direct access. |
-   | `TRUTHSOCIAL_USERNAME` / `TRUTHSOCIAL_PASSWORD` | Conditional | Truth Social credentials used to request an OAuth token (mirrors [truthbrush](https://github.com/stanfordio/truthbrush)). Provide both to let the app authenticate directly. |
-   | `TRUTHSOCIAL_TOKEN` | Optional | Pre-generated Truth Social OAuth token. Takes precedence over username/password when set. |
+   | `TRUTHSOCIAL_API_BASE_URL` | Optional | Override the Truth Social gateway base URL. Defaults to `https://truthsocial-api.vercel.app`. |
+   | `TRUTHSOCIAL_TEST_CREATED_AFTER` | Optional | Test mode override that forces polling to use the provided ISO-8601 timestamp for the Truth Social `createdAfter` filter. |
    | `TRUTHSOCIAL_USER_AGENT` | Optional | Override the User-Agent header for Truth Social API calls. Defaults to a modern Firefox UA string. |
    | `ENABLE_TWITTER` | Optional | Set to `false`/`0`/`off` to disable Twitter polling without removing credentials. Defaults to enabled. |
    | `ENABLE_TRUTHSOCIAL` | Optional | Set to `false`/`0`/`off` to disable Truth Social polling. Defaults to enabled. |
    | `OPENAI_API_KEY` | Optional | Enables OpenAI sentiment scoring. Omit to use heuristic fallback. |
+   | `POLL_WEBHOOK_TOKEN` | Optional | Shared secret required in the `X-Poll-Token` header (or `token` query param) when triggering `/api/poll` remotely. |
    | `ALERT_WEBHOOK_URL` | Optional | Single webhook target. |
    | `ALERT_WEBHOOK_URLS` | Optional | Comma-separated list of additional webhook URLs. |
    | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Recommended | Persists last-seen IDs between runs. |
@@ -51,20 +51,16 @@ Serverless alerting pipeline that monitors Donald Trump's activity on X (Twitter
    - `vercel env pull` / `vercel env add` to manage secrets.
    - The included `vercel.json` schedules `/api/poll` every 5 minutes by default (`*/5 * * * *`). Adjust as needed.
 
-### Fetching a Truth Social Token
-Truth Social’s OAuth endpoint blocks standard `fetch`/`curl` traffic via Cloudflare. If direct username/password auth fails, use the bundled helper (which relies on truthbrush’s `curl_cffi` impersonation) to mint a token locally and paste it into `TRUTHSOCIAL_TOKEN`:
+### Triggering polling via webhook
+If Vercel’s cron schedule does not meet your needs, you can call the polling endpoint yourself from any scheduler:
 
 ```bash
-# one-time dependency
-python3 -m pip install --user truthbrush
-
-# fetch token and copy it into your .env
-python3 scripts/fetch_truthsocial_token.py \
-  --username "you@example.com" \
-  --password "your-password"
+curl -X POST https://your-app.vercel.app/api/poll \
+  -H "X-Poll-Token: $POLL_WEBHOOK_TOKEN"
 ```
 
-The script prints `{"ok": true, "token": "..."}` on success. Tokens expire, so repeat the command whenever the API starts returning 401/403 responses.
+- Set `POLL_WEBHOOK_TOKEN` in your environment and include it as the `X-Poll-Token` header (or `?token=` query parameter).  
+- Any scheduler capable of making HTTP requests—GitHub Actions, GitLab CI, Cloudflare Workers, n8n, Zapier, etc.—can now trigger the poller on your preferred cadence while the code stays on Vercel.
 
 ## Webhook Payload Example
 ```json
@@ -96,42 +92,13 @@ The script prints `{"ok": true, "token": "..."}` on success. Tokens expire, so r
 
 ## Notes & Recommendations
 - Truth Social endpoints are rate-limited; keep cron frequency reasonable.
-- Authenticate directly by supplying `TRUTHSOCIAL_USERNAME` + `TRUTHSOCIAL_PASSWORD` (or `TRUTHSOCIAL_TOKEN`) to request the same OAuth bearer token flow used by [truthbrush](https://github.com/stanfordio/truthbrush). If Cloudflare blocks your region or headless traffic, fall back to the proxy option below.
-- Truth Social proxy mode (`TRUTHSOCIAL_PROXY_URL`) should expose either a Mastodon-style status array or `{ "statuses": [...] }`.
+- Truth Social polling leverages the public statuses endpoint via `truthsocial-api.vercel.app` and passes a `createdAfter` timestamp to avoid fetching duplicates. If you need a private deployment, point `TRUTHSOCIAL_API_BASE_URL` at your own gateway.
+- Set `TRUTHSOCIAL_TEST_CREATED_AFTER` when you want to replay posts from a specific ISO-8601 timestamp during testing; remove the value before production runs to resume normal cursor-based polling.
+- Discord webhooks are supported out of the box; dashboard-style embeds surface a quick-action line, sentiment summary, and rationale so teams know what to do at a glance.
 - Use `ENABLE_TWITTER=false` or `ENABLE_TRUTHSOCIAL=false` to pause polling without removing credentials.
 - For high fidelity sentiment analysis, set `OPENAI_API_KEY`. The heuristic fallback only provides coarse estimates.
 - Extend monitored accounts by editing `src/config/accounts.ts` or supplying the env vars above.
 - When adding additional webhook consumers, ensure they can handle duplicate deliveries—webhook retries follow a best-effort model.
-
-### Truth Social Proxy Template
-The app expects your proxy to respond with JSON shaped like the Mastodon API. A minimal Cloudflare Worker can forward authenticated requests:
-
-```js
-export default {
-  async fetch(request) {
-    const url = new URL(request.url);
-    const handle = url.searchParams.get("handle");
-    if (!handle) {
-      return new Response("Missing handle", { status: 400 });
-    }
-    const upstream = `https://truthsocial.com/api/v1/accounts/lookup?acct=${handle}`;
-    const lookup = await fetch(upstream, { headers: { "user-agent": "Your Worker" } });
-    if (!lookup.ok) {
-      return new Response("Lookup failed", { status: lookup.status });
-    }
-    const account = await lookup.json();
-    const timeline = await fetch(
-      `https://truthsocial.com/api/v1/accounts/${account.id}/statuses?limit=10&exclude_replies=true`,
-      { headers: { "user-agent": "Your Worker" } }
-    );
-    return new Response(await timeline.text(), {
-      headers: { "content-type": "application/json" }
-    });
-  }
-};
-```
-
-Deploy the worker, note its public URL, and set `TRUTHSOCIAL_PROXY_URL` to something like `https://your-worker.example.com?handle=:handle`.
 
 ## Local Development Tips
 - Use `LOG_LEVEL=debug` to see verbose logs from serverless handlers.

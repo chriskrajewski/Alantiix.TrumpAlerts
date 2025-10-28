@@ -26,6 +26,11 @@ export async function runPollingCycle(): Promise<PollingResult> {
   const notes: string[] = [];
   const twitterEnabled = flagEnabled(env.ENABLE_TWITTER, true);
   const truthSocialEnabled = flagEnabled(env.ENABLE_TRUTHSOCIAL, true);
+  if (truthSocialEnabled && env.TRUTHSOCIAL_TEST_CREATED_AFTER) {
+    notes.push(
+      `Truth Social test mode active. Using TRUTHSOCIAL_TEST_CREATED_AFTER=${env.TRUTHSOCIAL_TEST_CREATED_AFTER}.`
+    );
+  }
   const collected: Array<{ post: SocialPost; cursorKey: string }> = [];
 
   let twitterChecked = 0;
@@ -67,7 +72,7 @@ export async function runPollingCycle(): Promise<PollingResult> {
     for (const account of truthSocialAccounts) {
       const cursorKey = `truth-social:${account.handle.toLowerCase()}`;
       const cursor = await dedupeStore.getCursor(cursorKey);
-      const posts = await fetchLatestTruths(account);
+      const posts = await fetchLatestTruths(account, cursor?.createdAt ?? null);
       const fresh = cursor ? posts.filter((post) => isPostAfterCursor(post, cursor)) : posts;
       collected.push(
         ...fresh.map((post) => ({
@@ -105,14 +110,8 @@ export async function runPollingCycle(): Promise<PollingResult> {
         dedupeStore: dedupeStoreType,
         openAiConfigured: Boolean(env.OPENAI_API_KEY),
         twitterEnabled,
-        truthSocialProxyConfigured: Boolean(env.TRUTHSOCIAL_PROXY_URL),
-        truthSocialAuthMode: env.TRUTHSOCIAL_PROXY_URL
-          ? "proxy"
-          : env.TRUTHSOCIAL_TOKEN
-            ? "token"
-            : env.TRUTHSOCIAL_USERNAME
-              ? "password-grant"
-              : "none",
+        truthSocialApiBaseUrl: env.TRUTHSOCIAL_API_BASE_URL ?? "https://truthsocial-api.vercel.app",
+        truthSocialTestCreatedAfter: env.TRUTHSOCIAL_TEST_CREATED_AFTER ?? null,
         truthSocialEnabled
       }
     });
