@@ -9,12 +9,17 @@ const envSchema = z.object({
   TRUTHSOCIAL_USER_AGENT: z.string().min(1).optional(),
   ENABLE_TWITTER: z.string().optional(),
   ENABLE_TRUTHSOCIAL: z.string().optional(),
+  ENABLE_WEBHOOK_METADATA: z.string().optional(),
+  ENABLE_NEWS: z.string().optional(),
   ALERT_WEBHOOK_URL: z.string().url().optional(),
   ALERT_WEBHOOK_URLS: z.string().optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
   POLL_WEBHOOK_TOKEN: z.string().min(1).optional(),
   UPSTASH_REDIS_REST_URL: z.string().url().optional(),
-  UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional()
+  UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
+  FINNHUB_API_KEY: z.string().min(1).optional(),
+  FINNHUB_NEWS_CATEGORY: z.string().min(1).optional(),
+  NEWS_KEYWORDS: z.string().optional()
 });
 
 export type Env = z.infer<typeof envSchema>;

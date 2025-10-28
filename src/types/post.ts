@@ -1,4 +1,4 @@
-export type Platform = "twitter" | "truth-social";
+export type Platform = "twitter" | "truth-social" | "finnhub-news";
 
 export interface SocialPost {
   platform: Platform;

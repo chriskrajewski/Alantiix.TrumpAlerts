@@ -128,29 +128,26 @@ function createDiscordMessage(payload: NotificationPayload): Record<string, unkn
       inline: false
     });
   } 
-
-  return {
+  const message = {
     username: "TrumpPump Alert",
     content,
     embeds: [
       {
-        author: {
-        },
+        author: {},
         title: `${style.emoji} ${platform.emoji} ${displayName} on ${platform.name}`,
         url: payload.post.url,
         description,
         timestamp: payload.post.createdAt,
         color: style.color,
         fields: embedFields,
-        thumbnail: {
-          url: platform.thumbnailUrl
-        },
         footer: {
           text: `${platform.emoji} ${platform.name} • Post ID: ${payload.post.id}`
         }
       }
     ]
   };
+
+  return message;
 }
 
 function formatMetadata(metadata: Record<string, unknown> | undefined): string | null {
@@ -322,24 +319,37 @@ function getPlatformVisuals(
 ): {
   name: string;
   emoji: string;
-  iconUrl: string;
-  thumbnailUrl: string;
+  iconUrl?: string;
+  thumbnailUrl?: string;
 } {
-  if (platform === "twitter") {
-    return {
-      name: "X (Twitter)",
-      emoji: "🐦",
-      iconUrl: "https://abs.twimg.com/icons/apple-touch-icon-192x192.png",
-      thumbnailUrl: "https://abs.twimg.com/icons/apple-touch-icon-180x180.png"
-    };
+  switch (platform) {
+    case "twitter":
+      return {
+        name: "X (Twitter)",
+        emoji: "🐦",
+        iconUrl: "https://abs.twimg.com/icons/apple-touch-icon-192x192.png",
+        thumbnailUrl: "https://abs.twimg.com/icons/apple-touch-icon-180x180.png"
+      };
+    case "truth-social":
+      return {
+        name: "Truth Social",
+        emoji: "",
+        iconUrl: "https://truthsocial.com/apple-touch-icon.png",
+        thumbnailUrl: "https://truthsocial.com/assets/logo.png"
+      };
+    case "finnhub-news":
+      return {
+        name: "Finnhub News",
+        emoji: "🗞️"
+      };
+    default:
+      return {
+        name: platform,
+        emoji: "🔔"
+      };
   }
-  return {
-    name: "Truth Social",
-    emoji: "",
-    iconUrl: "https://truthsocial.com/apple-touch-icon.png",
-    thumbnailUrl: "https://truthsocial.com/assets/logo.png"
-  };
 }
+
 
 function formatTimestamp(value: string): string {
   const date = new Date(value);
