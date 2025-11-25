@@ -19,7 +19,8 @@ const envSchema = z.object({
   UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
   FINNHUB_API_KEY: z.string().min(1).optional(),
   FINNHUB_NEWS_CATEGORY: z.string().min(1).optional(),
-  NEWS_KEYWORDS: z.string().optional()
+  NEWS_KEYWORDS: z.string().optional(),
+  OPENAI_MODEL: z.string().default("gpt-4.1-nano")
 });
 
 export type Env = z.infer<typeof envSchema>;

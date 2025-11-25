@@ -23,8 +23,8 @@ export interface SentimentResult {
 
 const openAiClient = env.OPENAI_API_KEY
   ? new OpenAI({
-      apiKey: env.OPENAI_API_KEY
-    })
+    apiKey: env.OPENAI_API_KEY
+  })
   : null;
 
 export async function analyzeFinancialSentiment(text: string): Promise<SentimentResult> {
@@ -40,7 +40,7 @@ export async function analyzeFinancialSentiment(text: string): Promise<Sentiment
   if (openAiClient) {
     try {
       const completion = await openAiClient.chat.completions.create({
-        model: "gpt-4.1-nano",
+        model: env.OPENAI_MODEL,
         temperature: 0,
         response_format: { type: "json_object" },
         messages: [
